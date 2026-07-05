@@ -80,6 +80,8 @@
   .skel::after{content:""; position:absolute; top:0; left:0; right:0; bottom:0; transform:translateX(-100%); background:linear-gradient(90deg, transparent, rgba(140,170,200,0.13), transparent)}
   .skel-card{height:190px}
   .chart-skel{height:120px; margin:6px 0 4px}
+  .axis{position:relative; height:15px; margin-top:2px; font-size:11px; color:var(--muted); display:none}
+  .axis span{position:absolute; top:0; white-space:nowrap}
   .skel-row{height:14px; margin:10px 0}
   @media (prefers-reduced-motion: no-preference){
     .spin{animation:spin .9s linear infinite}
@@ -129,6 +131,7 @@
     <p class="lead" id="hg-lead">Loading Reclamation&rsquo;s Headgate Rock Dam schedule&hellip;</p>
     <div class="skel chart-skel" id="hg-skel"></div>
     <svg id="hg-chart" viewBox="0 0 900 120" preserveAspectRatio="none" style="display:none"></svg>
+    <div class="axis" id="hg-axis"></div>
     <p class="note" id="hg-note"></p>
   </div>
 </section>
@@ -142,6 +145,7 @@
     <p class="lead" id="fc-lead">Loading Reclamation&rsquo;s hourly record at the Water Wheel reference sensor&hellip;</p>
     <div class="skel chart-skel" id="fc-skel"></div>
     <svg id="fc-chart" viewBox="0 0 900 120" preserveAspectRatio="none" style="display:none"></svg>
+    <div class="axis" id="fc-axis"></div>
     <div class="links">
       <a href="https://www.usbr.gov/lc/region/g4000/hourly/DavisParkerSchedules.pdf" target="_blank" rel="noopener">Parker Dam projected schedule (PDF) &#8599;</a>
       <a href="https://www.usbr.gov/lc/riverops.html" target="_blank" rel="noopener">Reclamation river operations &#8599;</a>
@@ -177,8 +181,8 @@
 </section>
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-05a (v2)</span> &mdash; place picker \u00b7 GitHub data relay \u00b7 no server functions.<br>
-  Place timing is estimated from Reclamation river miles and a ~4 mph pulse speed (both editable at the top of this file \u2014 calibrate against your own dock).<br>
+  <span style="color:var(--water)">Build 2026-07-05b (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
+  Place timing is estimated from Reclamation river miles and a ~4 mph pulse speed (both editable at the top of this file &mdash; calibrate against your own dock).<br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
 
@@ -321,12 +325,38 @@ function spark(series){
   series.forEach(function(p,i){ var x=pad+i*step, y=pad+(H-2*pad)*(1-(p.v-min)/span); d += (i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; });
   return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none"><path d="'+d+'" fill="none" stroke="var(--water)" stroke-width="1.5" stroke-linejoin="round"/></svg>';
 }
-function areaChart(svg, series, color, dashed){
+function azDay(ms){ return new Date(ms).toLocaleDateString([], {timeZone:"America/Phoenix", weekday:"short", month:"numeric", day:"numeric"}).replace(",", ""); }
+function areaChart(svg, series, color, dashed, axisId, showNow){
   var W=900,H=120,pad=6, vals=series.map(function(p){return p.v;}), min=Math.min.apply(null,vals), max=Math.max.apply(null,vals), span=(max-min)||1, step=(W-2*pad)/(series.length-1), line="", area="";
   series.forEach(function(p,i){ var x=pad+i*step, y=pad+(H-2*pad)*(1-(p.v-min)/span); line+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; area+=(i?"L":"M")+x.toFixed(1)+" "+y.toFixed(1)+" "; });
   area += "L"+(pad+(series.length-1)*step).toFixed(1)+" "+(H-pad)+" L"+pad+" "+(H-pad)+" Z";
-  svg.innerHTML = '<path d="'+area+'" fill="'+color+'" opacity="0.11"/><path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="1.5"'+(dashed?' stroke-dasharray="5 4"':'')+'/>';
+  // day boundaries (MST midnights) + optional "now" marker
+  var t0=series[0].t, t1=series[series.length-1].t, T=(t1-t0)||1;
+  function X(t){ return pad + (t-t0)/T*(W-2*pad); }
+  var marks="", labels=[];
+  var r=(t0 - 7*3600000) % 86400000, m=t0 + ((86400000 - r) % 86400000);
+  var days=(t1-t0)/86400000, every=days>4.5?2:1, k=0;
+  for(; m<=t1; m+=86400000, k++){
+    var x=X(m);
+    marks += '<line x1="'+x.toFixed(1)+'" y1="0" x2="'+x.toFixed(1)+'" y2="'+H+'" stroke="var(--border)" stroke-width="1" opacity="0.7"/>';
+    if(k%every===0) labels.push({pct:x/W*100, txt:azDay(m), now:false});
+  }
+  var nowT=Date.now();
+  if(showNow && nowT>t0 && nowT<t1){
+    var xn=X(nowT);
+    marks += '<line x1="'+xn.toFixed(1)+'" y1="0" x2="'+xn.toFixed(1)+'" y2="'+H+'" stroke="var(--water)" stroke-width="1.5" opacity="0.85"/>';
+    labels.push({pct:xn/W*100, txt:"now", now:true});
+  }
+  svg.innerHTML = marks + '<path d="'+area+'" fill="'+color+'" opacity="0.11"/><path d="'+line+'" fill="none" stroke="'+color+'" stroke-width="1.5"'+(dashed?' stroke-dasharray="5 4"':'')+'/>';
   svg.style.display="block";
+  var ax = axisId ? document.getElementById(axisId) : null;
+  if(ax){
+    ax.innerHTML = labels.map(function(L){
+      var tr = L.pct<4 ? "translateX(0)" : (L.pct>96 ? "translateX(-100%)" : "translateX(-50%)");
+      return '<span style="left:'+L.pct.toFixed(2)+'%; transform:'+tr+';'+(L.now?' color:var(--water); font-weight:600;':'')+'">'+L.txt+'</span>';
+    }).join("");
+    ax.style.display = labels.length ? "block" : "none";
+  }
   return {min:min, max:max};
 }
 
@@ -515,10 +545,11 @@ function renderReach(){
   if(ww){
     var c=cur(ww.flow);
     now.innerHTML='Now at Water Wheel <b class="mono">'+fmt(c.v)+' cfs</b> \u00b7 '+azTime(c.t)+' MST';
-    var r=areaChart(svg, ww.flow, "var(--water)", false);
+    var r=areaChart(svg, ww.flow, "var(--water)", false, "fc-axis", false);
     lead.innerHTML='The hourly record at the Water Wheel sensor \u2014 the reference point for every place in the picker \u2014 over the last 7 days. Flow swings between <b class="mono" style="color:var(--text)">'+fmt(r.min)+'</b> and <b class="mono" style="color:var(--text)">'+fmt(r.max)+'</b> cfs, in a daily rhythm that repeats closely.';
   } else {
     svg.style.display="none"; now.innerHTML="";
+    var fax=document.getElementById("fc-axis"); if(fax) fax.style.display="none";
     if(!borTried){ lead.innerHTML='Loading Reclamation&rsquo;s hourly record at the Water Wheel reference sensor&hellip;'; }
     else if(borErr){ lead.innerHTML='Reach feed error &mdash; <span class="mono">'+esc(borErr)+'</span>. The relay or proxy may be busy; try Refresh in a minute. The live gauge and tide table still work.'; }
     else { lead.innerHTML='The reach feed responded but had no Water Wheel site. Sites returned: <span class="mono">'+esc((borData&&borData.stations||[]).map(function(s){return s.key;}).join(", ")||"none")+'</span>.'; }
@@ -530,6 +561,7 @@ function renderHeadgate(){
   if(skel) skel.style.display = (d.length || hgTried) ? "none" : "block";
   if(!d.length){
     svg.style.display="none"; nextEl.innerHTML=""; noteEl.textContent="";
+    var hax=document.getElementById("hg-axis"); if(hax) hax.style.display="none";
     if(!hgTried){ lead.innerHTML='Loading Reclamation&rsquo;s Headgate Rock Dam schedule\u2026'; }
     else if(hgErr){ lead.innerHTML='The live schedule couldn&rsquo;t be pulled this time. Your next highs and lows are in the <b style="color:var(--text)">tide table below</b>, projected from the recent rhythm. Official schedule: <a class="site-link" href="'+HG_PDF+'" target="_blank" rel="noopener">Headgate PDF \u2197</a>. Tip: the GitHub relay in the README makes this panel dependable.'; }
     else { lead.innerHTML='The forecast PDF loaded but parsed no rows (Reclamation may have changed the layout). Raw schedule: <a class="site-link" href="'+HG_PDF+'" target="_blank" rel="noopener">Headgate PDF \u2197</a>.'; }
@@ -538,7 +570,7 @@ function renderHeadgate(){
   var pl=currentPlace(), shift=headgateLagMs(pl);
   var arrival=d.map(function(p){ return {t:p.t+shift, v:p.v}; });
   var now=Date.now(), fut=arrival.filter(function(p){ return p.t >= now - 2*3600*1000; }), series=fut.length>=4?fut:arrival;
-  var r=areaChart(svg, series, "var(--house)", true);
+  var r=areaChart(svg, series, "var(--house)", true, "hg-axis", true);
   var toFt=buildRating();
   function lvlTxt(v){
     var ft=toFt?toFt(v):null;
