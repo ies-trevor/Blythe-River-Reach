@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Live Colorado River water levels, daily highs &amp; lows, and multi-day forecasts for every landmark from Lake Havasu to Walter's Camp — Parker Dam, the Parker Strip, Lost Lake, Water Wheel, Blythe, and beyond.">
+<meta property="og:title" content="Blythe River Reach — live river levels &amp; forecast">
+<meta property="og:description" content="Is the river up or down at your spot? Live sensors, tide tables, and the dam schedule, shifted to your stretch of the Colorado.">
+<meta property="og:type" content="website">
 <title>Blythe River Reach — live levels</title>
 <style>
   :root{
@@ -159,7 +163,7 @@
 
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-08j (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
+  <span style="color:var(--water)">Build 2026-07-08k (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
   Place timing is estimated from Reclamation river miles and the pulse travel speed (default ~4 mph, editable at the top of this file).<span id="cal-note"></span><br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
@@ -182,6 +186,8 @@ var PROXIES = [
 // ============ EDIT ME ============
 // GitHub data relay: your repo, so the page reads hourly data the bot fetched server-side.
 var GH_REPO = "ies-trevor/Blythe-River-Reach";
+// Optional tip jar: paste a Ko-fi / Buy Me a Coffee / PayPal link to show the support box.
+var SUPPORT_URL = "";
 var GH_BRANCH = "main";
 // Netlify branch deploys are served from "branch--sitename.netlify.app" \u2014 detect it
 // so the dev site previews the dev robot\u2019s data (falling back to main automatically).
@@ -917,6 +923,12 @@ var MODE_KEY="blythe_mode_v1";
     store.set(MODE_KEY, mode);
     apply(mode);
   });
+})();
+(function initSupport(){
+  if(SUPPORT_URL){
+    var box=document.getElementById("support-box"), a=document.getElementById("support-link");
+    if(box && a){ a.href=SUPPORT_URL; box.style.display="block"; }
+  }
 })();
 document.getElementById("refresh").addEventListener("click", loadAll);
 loadAll();
