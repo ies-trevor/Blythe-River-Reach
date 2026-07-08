@@ -159,7 +159,7 @@
 
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-08g (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
+  <span style="color:var(--water)">Build 2026-07-08h (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
   Place timing is estimated from Reclamation river miles and the pulse travel speed (default ~4 mph, editable at the top of this file).<span id="cal-note"></span><br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
@@ -183,6 +183,12 @@ var PROXIES = [
 // GitHub data relay: your repo, so the page reads hourly data the bot fetched server-side.
 var GH_REPO = "ies-trevor/Blythe-River-Reach";
 var GH_BRANCH = "main";
+// Netlify branch deploys are served from "branch--sitename.netlify.app" \u2014 detect it
+// so the dev site previews the dev robot\u2019s data (falling back to main automatically).
+try{
+  var _bm=(window.location && location.hostname || "").match(/^([a-z0-9-]+)--/);
+  if(_bm && _bm[1]) GH_BRANCH=_bm[1];
+}catch(e){}
 // How fast a release pulse travels downstream. Calibrate: watch one high pass a sensor,
 // note when it reaches your dock, adjust until the times match.
 var WAVE_MPH = 4;
@@ -815,15 +821,20 @@ function setLoading(on){
 }
 function loadRelay(){
   var urls=[];
-  if(GH_REPO) urls.push("https://raw.githubusercontent.com/"+GH_REPO+"/"+GH_BRANCH+"/data/riverdata.json?t="+Date.now());
-  urls.push("data/riverdata.json?t="+Date.now());
+  if(GH_REPO){
+    if(GH_BRANCH!=="main") urls.push({u:"https://raw.githubusercontent.com/"+GH_REPO+"/"+GH_BRANCH+"/data/riverdata-"+GH_BRANCH+".json?t="+Date.now(), b:GH_BRANCH});
+    urls.push({u:"https://raw.githubusercontent.com/"+GH_REPO+"/main/data/riverdata.json?t="+Date.now(), b:"main"});
+  }
+  urls.push({u:"data/riverdata.json?t="+Date.now(), b:null});
   var i=0;
   function next(){
     if(i>=urls.length) return Promise.resolve(null);
-    return fetchT(urls[i++], 10000).then(function(r){ if(!r.ok) throw 0; return r.json(); })
+    var it=urls[i++];
+    return fetchT(it.u, 10000).then(function(r){ if(!r.ok) throw 0; return r.json(); })
       .then(function(j){
         var age=Date.now()-new Date(j.generatedAt).getTime();
         if(!(age>=0 && age<6*3600*1000)) throw 0;
+        j._branch=it.b;
         return j;
       }).catch(next);
   }
@@ -835,7 +846,7 @@ function loadAll(){
   var pU=loadUsgs().then(rebuild);
   var pR=loadRelay().then(function(j){
     if(j){
-      relayInfo={t:new Date(j.generatedAt).getTime()};
+      relayInfo={t:new Date(j.generatedAt).getTime(), branch:j._branch};
       if(j.calibration && j.calibration.waveMph>=1 && j.calibration.waveMph<=12){
         WAVE_MPH=j.calibration.waveMph;
         var cn=document.getElementById("cal-note");
@@ -858,7 +869,7 @@ function loadAll(){
     if(relayInfo){
       var mm=Math.max(0, Math.round((Date.now()-relayInfo.t)/60000));
       var u=document.getElementById("updated");
-      if(u && u.textContent.indexOf("relay")<0) u.textContent += " \u00b7 relay "+mm+"m old";
+      if(u && u.textContent.indexOf("relay")<0) u.textContent += " \u00b7 relay "+mm+"m old"+((relayInfo.branch && relayInfo.branch!=="main") ? " ("+relayInfo.branch+")" : "");
     }
   }
   Promise.all([pU,pR]).then(done, done);

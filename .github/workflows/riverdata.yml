@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - main
+      - dev
     paths:
       - "scripts/**"
       - ".github/workflows/riverdata.yml"
@@ -15,7 +16,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: riverdata
+  group: riverdata-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -34,10 +35,14 @@ jobs:
       - name: Fetch and parse river data
         run: node scripts/build-data.cjs
 
+      - name: Use branch-specific data file (avoids PR conflicts)
+        if: github.ref_name != 'main'
+        run: mv data/riverdata.json "data/riverdata-${{ github.ref_name }}.json"
+
       - name: Commit data (skips Netlify build)
         run: |
           git config user.name "river-bot"
           git config user.email "river-bot@users.noreply.github.com"
-          git add data/riverdata.json
+          git add data/
           git diff --cached --quiet || git commit -m "river data $(date -u +%FT%TZ) [skip netlify]"
           git push
