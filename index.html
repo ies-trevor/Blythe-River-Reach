@@ -159,7 +159,7 @@
 
 
 <footer>
-  <span style="color:var(--water)">Build 2026-07-08i (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
+  <span style="color:var(--water)">Build 2026-07-08j (v2)</span> &mdash; place picker &middot; GitHub data relay &middot; no server functions.<br>
   Place timing is estimated from Reclamation river miles and the pulse travel speed (default ~4 mph, editable at the top of this file).<span id="cal-note"></span><br>
   Live USGS gauge fetched directly; Reclamation reach sensors and the Headgate forecast are fetched through a public read-only proxy (gov servers don&rsquo;t send browser-permission headers). All values are provisional. This is not a flood-warning system. Times are Arizona (MST).
 </footer>
@@ -828,7 +828,11 @@ function setLoading(on){
 function loadRelay(){
   var urls=[];
   if(GH_REPO){
-    if(GH_BRANCH!=="main") urls.push({u:"https://raw.githubusercontent.com/"+GH_REPO+"/"+GH_BRANCH+"/data/riverdata-"+GH_BRANCH+".json?t="+Date.now(), b:GH_BRANCH});
+    if(GH_BRANCH!=="main"){
+      // The API resolves branch names in real time; raw.githubusercontent lags pushes by ~5 min.
+      urls.push({u:"https://api.github.com/repos/"+GH_REPO+"/contents/data/riverdata-"+GH_BRANCH+".json?ref="+GH_BRANCH, b:GH_BRANCH, api:true});
+      urls.push({u:"https://raw.githubusercontent.com/"+GH_REPO+"/"+GH_BRANCH+"/data/riverdata-"+GH_BRANCH+".json?t="+Date.now(), b:GH_BRANCH});
+    }
     urls.push({u:"https://raw.githubusercontent.com/"+GH_REPO+"/main/data/riverdata.json?t="+Date.now(), b:"main"});
   }
   urls.push({u:"data/riverdata.json?t="+Date.now(), b:null});
@@ -836,7 +840,14 @@ function loadRelay(){
   function next(){
     if(i>=urls.length) return Promise.resolve(null);
     var it=urls[i++];
-    return fetchT(it.u, 10000).then(function(r){ if(!r.ok) throw 0; return r.json(); })
+    var p = it.api
+      ? (function(){
+          var c=new AbortController(); var to=setTimeout(function(){c.abort();}, 10000);
+          return fetch(it.u, {signal:c.signal, headers:{"Accept":"application/vnd.github.raw"}})
+            .then(function(r){ clearTimeout(to); return r; }, function(err){ clearTimeout(to); throw err; });
+        })()
+      : fetchT(it.u, 10000);
+    return p.then(function(r){ if(!r.ok) throw 0; return r.json(); })
       .then(function(j){
         var age=Date.now()-new Date(j.generatedAt).getTime();
         if(!(age>=0 && age<6*3600*1000)) throw 0;
